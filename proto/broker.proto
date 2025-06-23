@@ -1,0 +1,92 @@
+syntax = "proto3";
+package broker;
+option go_package = "github.com/hahahamid/broker-backend/proto;brokerpb";
+
+import "google/api/annotations.proto";
+
+message Empty {}
+
+message SignupRequest {
+  string email    = 1;
+  string password = 2;
+}
+message LoginRequest {
+  string email    = 1;
+  string password = 2;
+}
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message AuthResponse {
+  string access_token  = 1;
+  string refresh_token = 2;
+}
+
+message Holding {
+  string symbol    = 1;
+  double quantity  = 2;
+  double avg_price = 3;
+}
+message HoldingsResponse {
+  repeated Holding holdings = 1;
+}
+
+message Order {
+  string id             = 1;
+  string symbol         = 2;
+  string side           = 3;
+  double quantity       = 4;
+  double price          = 5;
+  double realized_pnl   = 6;
+  double unrealized_pnl = 7;
+}
+message OrderbookResponse {
+  repeated Order orders = 1;
+}
+
+message Position {
+  string symbol   = 1;
+  double quantity = 2;
+  double avg_price = 3;
+  double pnl      = 4;
+}
+message PositionsResponse {
+  repeated Position positions = 1;
+}
+
+service Broker {
+  rpc Signup(SignupRequest) returns (Empty) {
+    option (google.api.http) = {
+      post: "/signup"
+      body: "*"
+    };
+  }
+  rpc Login(LoginRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/login"
+      body: "*"
+    };
+  }
+  rpc Refresh(RefreshRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/refresh"
+      body: "*"
+    };
+  }
+  rpc GetHoldings(Empty) returns (HoldingsResponse) {
+    option (google.api.http) = {
+      get: "/holdings"
+    };
+  }
+  rpc GetOrderbook(Empty) returns (OrderbookResponse) {
+    option (google.api.http) = {
+      get: "/orderbook"
+    };
+  }
+  rpc GetPositions(Empty) returns (PositionsResponse) {
+    option (google.api.http) = {
+      get: "/positions"
+    };
+  }
+}
