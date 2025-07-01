@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
+
+	"encoding/json"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -18,6 +22,10 @@ import (
 	"github.com/hahahamid/broker-backend/internal/repository"
 	pb "github.com/hahahamid/broker-backend/proto"
 )
+
+var ipClient = &http.Client{
+	Timeout: 3 * time.Second,
+}
 
 func main() {
 	cfg := config.Load()
@@ -72,6 +80,49 @@ func main() {
 		auth.GET("/orderbook", ob.Get)
 		auth.GET("/positions", ph.Get)
 	}
+
+	// POST API AS REQUESTED
+
+	r.POST("/push-data", func(c *gin.Context) {
+
+		// If you omit version, it defaults to IPv4.
+		// If you want IPv6, use ?version=ipv6
+
+		version := c.DefaultQuery("version", "ipv4")
+
+		var (
+			url    string
+			source string
+		)
+		switch version {
+		case "ipv6":
+			url = "https://api64.ipify.org?format=json"
+			source = "ipv6"
+		default:
+			url = "https://api.ipify.org?format=json"
+			source = "ipv4"
+		}
+
+		resp, err := ipClient.Get(url)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		var body struct {
+			IP string `json:"ip"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("welcome to the server from %s", body.IP),
+			"source":  source,
+		})
+	})
 
 	log.Println("HTTP server @ :8080")
 	if err := r.Run(":8080"); err != nil {
