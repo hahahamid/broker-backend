@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -25,6 +26,49 @@ import (
 
 var ipClient = &http.Client{
 	Timeout: 3 * time.Second,
+}
+
+type ipResponse struct {
+	IP string `json:"ip"`
+}
+
+// this func will first try the IPv6 endpoint, and if it errors (timeout,
+// no connectivity, etc), it will go to the IPv4 endpoint.
+
+func getPublicIP(ctx context.Context) (ip, source string, err error) {
+	endpoints := []struct {
+		url, src string
+	}{
+		{"https://api64.ipify.org?format=json", "ipv6"},
+		{"https://api.ipify.org?format=json", "ipv4"},
+	}
+
+	for _, ep := range endpoints {
+		reqCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+
+		req, _ := http.NewRequestWithContext(reqCtx, http.MethodGet, ep.url, nil)
+		resp, err := ipClient.Do(req)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		var body ipResponse
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			continue
+		}
+		if body.IP == "" {
+			continue
+		}
+		return body.IP, ep.src, nil
+	}
+
+	return "", "", errors.New("could not get public IP (both ipv6 & ipv4 failed)")
 }
 
 func main() {
@@ -84,42 +128,14 @@ func main() {
 	// POST API AS REQUESTED
 
 	r.POST("/push-data", func(c *gin.Context) {
-
-		// If you omit version, it defaults to IPv4.
-		// If you want IPv6, use ?version=ipv6
-
-		version := c.DefaultQuery("version", "ipv4")
-
-		var (
-			url    string
-			source string
-		)
-		switch version {
-		case "ipv6":
-			url = "https://api64.ipify.org?format=json"
-			source = "ipv6"
-		default:
-			url = "https://api.ipify.org?format=json"
-			source = "ipv4"
-		}
-
-		resp, err := ipClient.Get(url)
+		ip, source, err := getPublicIP(c.Request.Context())
 		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-			return
-		}
-		defer resp.Body.Close()
-
-		var body struct {
-			IP string `json:"ip"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message": fmt.Sprintf("welcome to the server from %s", body.IP),
+			"message": fmt.Sprintf("welcome to the server from %s", ip),
 			"source":  source,
 		})
 	})
